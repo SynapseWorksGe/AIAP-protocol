@@ -103,7 +103,10 @@ class YandexSTTService:
 
         import os
         file_size_mb = os.path.getsize(audio_path) / 1_048_576
-        use_uri = file_size_mb >= URI_THRESHOLD_MB and self.yc_s3_configured()
+        s3_ok = self.yc_s3_configured()
+        use_uri = file_size_mb >= URI_THRESHOLD_MB and s3_ok
+        _log(f"Размер файла: {file_size_mb:.1f} MB, порог URI: {URI_THRESHOLD_MB} MB, "
+             f"YC S3 настроен: {s3_ok} → режим: {'URI' if use_uri else 'inline'}")
 
         spec = {
             "languageCode": language_code,
