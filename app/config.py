@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
 
     # S3
-    s3_endpoint_url: str = "https://storage.yandexcloud.net"
+    s3_endpoint_url: str = "https://eu2.contabostorage.com"
+    s3_region: str = "eu2"
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_bucket_name: str = ""
