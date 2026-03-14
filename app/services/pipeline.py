@@ -65,7 +65,9 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
         else:
             _log(job_id, f"Файл >= 1 MB — используется longRunningRecognize (Yandex STT)")
             _update_status(job_id, JobStatus.TRANSCRIBING, "Распознавание речи (Yandex STT)...")
-            raw_transcript = yandex_stt_service.transcribe_long_audio(audio_path, language)
+            raw_transcript = yandex_stt_service.transcribe_long_audio(
+                audio_path, language, on_log=lambda msg: _log(job_id, msg)
+            )
             _log(job_id, f"Распознавание завершено, получено {len(raw_transcript)} символов")
 
         if not raw_transcript.strip():
