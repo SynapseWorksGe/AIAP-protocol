@@ -175,29 +175,36 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
         # 5. Upload all to S3
         _update_status(job_id, JobStatus.UPLOADING, "Загрузка результатов в S3...")
 
+        transcript_s3_key = _s3_key(job_id, "transcript.txt")
+        summary_s3_key = _s3_key(job_id, "summary.txt")
+        tasks_s3_key = _s3_key(job_id, "tasks.txt")
+        pdf_s3_key = _s3_key(job_id, "meeting_report.pdf")
+
         _log(job_id, "Загрузка transcript.txt в S3...")
-        transcript_url = s3_service.upload_file(transcript_path, _s3_key(job_id, "transcript.txt"), "text/plain; charset=utf-8")
+        s3_service.upload_file(transcript_path, transcript_s3_key, "text/plain; charset=utf-8")
 
         _log(job_id, "Загрузка summary.txt в S3...")
-        summary_txt_url = s3_service.upload_file(summary_txt_path, _s3_key(job_id, "summary.txt"), "text/plain; charset=utf-8")
+        s3_service.upload_file(summary_txt_path, summary_s3_key, "text/plain; charset=utf-8")
 
         _log(job_id, "Загрузка tasks.txt в S3...")
-        tasks_url = s3_service.upload_file(tasks_txt_path, _s3_key(job_id, "tasks.txt"), "text/plain; charset=utf-8")
+        s3_service.upload_file(tasks_txt_path, tasks_s3_key, "text/plain; charset=utf-8")
 
         _log(job_id, "Загрузка meeting_report.pdf в S3...")
-        summary_pdf_url = s3_service.upload_file(pdf_path, _s3_key(job_id, "meeting_report.pdf"), "application/pdf")
+        s3_service.upload_file(pdf_path, pdf_s3_key, "application/pdf")
 
         _log(job_id, "Все файлы загружены в S3")
 
-        # 6. Done
+        # 6. Done — store S3 keys (download endpoint generates presigned URLs)
         jobs[job_id].update(
             {
                 "status": JobStatus.COMPLETED,
                 "message": "Обработка завершена",
-                "transcript_url": transcript_url,
-                "summary_txt_url": summary_txt_url,
-                "summary_pdf_url": summary_pdf_url,
-                "tasks_url": tasks_url,
+                "s3_keys": {
+                    "transcript": transcript_s3_key,
+                    "summary_txt": summary_s3_key,
+                    "summary_pdf": pdf_s3_key,
+                    "tasks": tasks_s3_key,
+                },
             }
         )
         _log(job_id, "Обработка завершена успешно")

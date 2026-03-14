@@ -5,11 +5,13 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Query
+from fastapi.responses import RedirectResponse
 
 from app.config import settings
 from app.models.schemas import JobResponse, JobResult, JobStatus
 from app.services.pipeline import jobs, process_audio
+from app.services.s3_service import s3_service
 
 router = APIRouter(prefix="/api/v1/meetings", tags=["meetings"])
 
@@ -90,15 +92,38 @@ async def list_jobs():
     return [_job_to_result(job_id, job) for job_id, job in jobs.items()]
 
 
+VALID_FILE_TYPES = {"transcript", "summary_txt", "summary_pdf", "tasks"}
+
+
+@router.get("/download/{job_id}/{file_type}")
+async def download_file(job_id: str, file_type: str):
+    """Generate a presigned S3 URL and redirect to it for download."""
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Задача не найдена")
+    if file_type not in VALID_FILE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Неверный тип файла: {file_type}")
+
+    s3_keys = jobs[job_id].get("s3_keys", {})
+    s3_key = s3_keys.get(file_type)
+    if not s3_key:
+        raise HTTPException(status_code=404, detail="Файл ещё не готов")
+
+    presigned_url = s3_service.generate_presigned_url(s3_key, expires_in=3600)
+    return RedirectResponse(url=presigned_url, status_code=302)
+
+
 def _job_to_result(job_id: str, job: dict) -> JobResult:
+    base = f"/api/v1/meetings/download/{job_id}"
+    s3_keys = job.get("s3_keys", {})
+
     return JobResult(
         job_id=job_id,
         status=job["status"],
         message=job.get("message"),
-        transcript_url=job.get("transcript_url"),
-        summary_txt_url=job.get("summary_txt_url"),
-        summary_pdf_url=job.get("summary_pdf_url"),
-        tasks_url=job.get("tasks_url"),
+        transcript_url=f"{base}/transcript" if "transcript" in s3_keys else None,
+        summary_txt_url=f"{base}/summary_txt" if "summary_txt" in s3_keys else None,
+        summary_pdf_url=f"{base}/summary_pdf" if "summary_pdf" in s3_keys else None,
+        tasks_url=f"{base}/tasks" if "tasks" in s3_keys else None,
         error=job.get("error"),
         logs=job.get("logs", []),
         stage_started_at=job.get("stage_started_at"),
