@@ -24,17 +24,22 @@ class YandexSTTService:
     def _headers(self) -> dict:
         return {"Authorization": f"Api-Key {self._api_key}"}
 
-    def transcribe_from_s3(self, s3_uri: str, language_code: str = "ru-RU") -> str:
+    def transcribe_long_audio(self, audio_path: str, language_code: str = "ru-RU") -> str:
         """
-        Start long-running recognition from an S3 URI and poll until complete.
+        Start long-running recognition by sending audio as base64 content.
 
         Args:
-            s3_uri: Full S3 URL of the audio file (e.g. https://storage.yandexcloud.net/bucket/file.ogg)
+            audio_path: Local path to the audio file.
             language_code: Language code for recognition.
 
         Returns:
             Full transcript as a string.
         """
+        import base64
+
+        with open(audio_path, "rb") as f:
+            audio_content = base64.b64encode(f.read()).decode("utf-8")
+
         body = {
             "config": {
                 "specification": {
@@ -47,12 +52,12 @@ class YandexSTTService:
                 },
                 "folderId": self._folder_id,
             },
-            "audio": {"uri": s3_uri},
+            "audio": {"content": audio_content},
         }
 
-        logger.info("Starting long-running recognition for %s", s3_uri)
+        logger.info("Starting long-running recognition for %s", audio_path)
 
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=120) as client:
             resp = client.post(RECOGNIZE_LONG_URL, json=body, headers=self._headers())
             resp.raise_for_status()
             operation = resp.json()

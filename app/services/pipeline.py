@@ -40,7 +40,7 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
             with open(audio_path, "rb") as f:
                 raw_transcript = yandex_stt_service.transcribe_from_bytes(f.read(), language)
         else:
-            raw_transcript = yandex_stt_service.transcribe_from_s3(audio_url, language)
+            raw_transcript = yandex_stt_service.transcribe_long_audio(audio_path, language)
 
         if not raw_transcript.strip():
             raise ValueError("Yandex STT returned empty transcript")
