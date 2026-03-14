@@ -9,12 +9,17 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
 
-    # S3
+    # S3 (Contabo — основное хранилище результатов)
     s3_endpoint_url: str = "https://eu2.contabostorage.com"
     s3_region: str = "eu2"
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_bucket_name: str = ""
+
+    # Yandex Object Storage (для передачи больших аудио в STT по URI)
+    yc_s3_access_key: str = ""
+    yc_s3_secret_key: str = ""
+    yc_s3_bucket: str = ""
 
     # App
     app_host: str = "0.0.0.0"

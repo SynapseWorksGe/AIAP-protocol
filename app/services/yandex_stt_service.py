@@ -3,8 +3,11 @@
 import base64
 import logging
 import time
+import uuid
 
+import boto3
 import httpx
+from botocore.config import Config
 
 from app.config import settings
 
@@ -12,10 +15,14 @@ logger = logging.getLogger(__name__)
 
 RECOGNIZE_LONG_URL = "https://transcribe.api.cloud.yandex.net/speech/stt/v2/longRunningRecognize"
 OPERATIONS_URL = "https://operation.api.cloud.yandex.net/operations"
+YC_S3_ENDPOINT = "https://storage.yandexcloud.net"
 
 # Retry settings for 429 responses
 MAX_RETRIES = 5
 RETRY_BACKOFF_BASE = 5  # seconds
+
+# Files larger than this (in MB, after compression) use Object Storage URI
+URI_THRESHOLD_MB = 15
 
 
 class YandexSTTService:
@@ -24,9 +31,50 @@ class YandexSTTService:
     def __init__(self):
         self._api_key = settings.yandex_api_key
         self._folder_id = settings.yandex_folder_id
+        self._yc_s3 = None
 
     def _headers(self) -> dict:
         return {"Authorization": f"Api-Key {self._api_key}"}
+
+    def _get_yc_s3(self):
+        """Lazy-init Yandex Object Storage client."""
+        if self._yc_s3 is None:
+            self._yc_s3 = boto3.client(
+                "s3",
+                endpoint_url=YC_S3_ENDPOINT,
+                region_name="ru-central1",
+                aws_access_key_id=settings.yc_s3_access_key,
+                aws_secret_access_key=settings.yc_s3_secret_key,
+                config=Config(signature_version="s3v4"),
+            )
+        return self._yc_s3
+
+    @staticmethod
+    def yc_s3_configured() -> bool:
+        """Check if Yandex Object Storage credentials are set."""
+        return bool(settings.yc_s3_access_key and settings.yc_s3_secret_key and settings.yc_s3_bucket)
+
+    # ------------------------------------------------------------------
+    # Yandex Object Storage helpers
+    # ------------------------------------------------------------------
+
+    def upload_to_yc_s3(self, local_path: str, _log) -> str:
+        """Upload file to Yandex Object Storage and return the S3 URI."""
+        s3_key = f"stt-tmp/{uuid.uuid4().hex}.ogg"
+        bucket = settings.yc_s3_bucket
+        _log(f"Загрузка аудио в Yandex Object Storage ({bucket}/{s3_key})...")
+        self._get_yc_s3().upload_file(local_path, bucket, s3_key)
+        uri = f"https://{bucket}.storage.yandexcloud.net/{s3_key}"
+        _log(f"Файл загружен: {uri}")
+        return uri, s3_key
+
+    def delete_from_yc_s3(self, s3_key: str):
+        """Delete temporary file from Yandex Object Storage."""
+        try:
+            self._get_yc_s3().delete_object(Bucket=settings.yc_s3_bucket, Key=s3_key)
+            logger.info("Deleted from YC S3: %s", s3_key)
+        except Exception as e:
+            logger.warning("Failed to delete from YC S3: %s", e)
 
     # ------------------------------------------------------------------
     # Public API
@@ -39,7 +87,10 @@ class YandexSTTService:
         on_log=None,
         sample_rate: int = 48000,
     ) -> str:
-        """Transcribe an audio file via longRunningRecognize (single request, no chunking).
+        """Transcribe an audio file via longRunningRecognize.
+
+        For large files (> URI_THRESHOLD_MB) with Yandex Object Storage configured,
+        uploads to Object Storage and uses URI mode. Otherwise sends inline base64.
 
         Args:
             on_log: Optional callback ``fn(message: str)`` for progress updates.
@@ -50,35 +101,50 @@ class YandexSTTService:
             if on_log:
                 on_log(msg)
 
-        with open(audio_path, "rb") as f:
-            raw = f.read()
+        import os
+        file_size_mb = os.path.getsize(audio_path) / 1_048_576
+        use_uri = file_size_mb >= URI_THRESHOLD_MB and self.yc_s3_configured()
 
-        size_mb = len(raw) / 1_048_576
-        _log(f"Отправка файла в Yandex STT ({size_mb:.1f} MB)...")
-
-        audio_content = base64.b64encode(raw).decode("utf-8")
-
-        body = {
-            "config": {
-                "specification": {
-                    "languageCode": language_code,
-                    "model": "general",
-                    "profanityFilter": False,
-                    "audioEncoding": "OGG_OPUS",
-                    "sampleRateHertz": sample_rate,
-                    "audioChannelCount": 1,
-                },
-                "folderId": self._folder_id,
-            },
-            "audio": {"content": audio_content},
+        spec = {
+            "languageCode": language_code,
+            "model": "general",
+            "profanityFilter": False,
+            "audioEncoding": "OGG_OPUS",
+            "sampleRateHertz": sample_rate,
+            "audioChannelCount": 1,
         }
 
-        # Submit with retry on 429
-        operation_id = self._submit_with_retry(body, _log)
-        _log(f"Операция создана: {operation_id}, ожидание результата...")
+        yc_s3_key = None
+        try:
+            if use_uri:
+                # Upload to Yandex Object Storage and use URI
+                uri, yc_s3_key = self.upload_to_yc_s3(audio_path, _log)
+                _log(f"Отправка запроса в Yandex STT (URI mode, {file_size_mb:.1f} MB)...")
+                body = {
+                    "config": {"specification": spec, "folderId": self._folder_id},
+                    "audio": {"uri": uri},
+                }
+            else:
+                # Inline base64 content
+                with open(audio_path, "rb") as f:
+                    raw = f.read()
+                _log(f"Отправка файла в Yandex STT ({file_size_mb:.1f} MB)...")
+                audio_content = base64.b64encode(raw).decode("utf-8")
+                body = {
+                    "config": {"specification": spec, "folderId": self._folder_id},
+                    "audio": {"content": audio_content},
+                }
 
-        # Poll until done
-        return self._poll_operation(operation_id, _log)
+            # Submit with retry on 429
+            operation_id = self._submit_with_retry(body, _log)
+            _log(f"Операция создана: {operation_id}, ожидание результата...")
+
+            # Poll until done
+            return self._poll_operation(operation_id, _log)
+        finally:
+            # Cleanup temporary file from Yandex Object Storage
+            if yc_s3_key:
+                self.delete_from_yc_s3(yc_s3_key)
 
     def transcribe_from_bytes(self, audio_data: bytes, language_code: str = "ru-RU") -> str:
         """Transcribe short audio (< 1 MB) using the short recognition API."""
