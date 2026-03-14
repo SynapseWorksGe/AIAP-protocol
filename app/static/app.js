@@ -1,4 +1,6 @@
-const API = '/api/v1/meetings';
+// Detect base path for reverse proxy support (e.g. /aiap/)
+const BASE = window.location.pathname.replace(/\/+$/, '');
+const API = `${BASE}/api/v1/meetings`;
 let pollingIntervals = {};
 
 // --- DOM refs ---
@@ -187,7 +189,7 @@ async function checkHealth() {
     statusOverall.className = 'status-overall checking';
 
     try {
-        const resp = await fetch('/health/details');
+        const resp = await fetch(`${BASE}/health/details`);
         const data = await resp.json();
 
         statusGrid.innerHTML = '';
