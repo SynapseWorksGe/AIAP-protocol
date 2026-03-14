@@ -508,6 +508,71 @@ body {
     margin-bottom: 4px;
 }
 
+/* Job log panel */
+.job-log {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.job-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: var(--bg);
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.job-log-header:hover { color: var(--text); }
+
+.job-log-toggle {
+    font-size: 11px;
+    transition: transform 0.2s;
+}
+
+.job-log-toggle.open { transform: rotate(180deg); }
+
+.job-log-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.job-log-body.open {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.job-log-entries {
+    padding: 10px 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    background: #f8fafc;
+}
+
+.job-log-entry {
+    padding: 2px 0;
+    color: var(--text);
+    word-break: break-word;
+}
+
+.job-log-entry:last-child {
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.job-log-entry.error-entry {
+    color: var(--error);
+    font-weight: 600;
+}
+
 /* Notification toast */
 .notification {
     position: fixed;

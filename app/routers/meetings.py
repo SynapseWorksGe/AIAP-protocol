@@ -84,11 +84,13 @@ async def get_job_status(job_id: str):
     return JobResult(
         job_id=job_id,
         status=job["status"],
+        message=job.get("message"),
         transcript_url=job.get("transcript_url"),
         summary_txt_url=job.get("summary_txt_url"),
         summary_pdf_url=job.get("summary_pdf_url"),
         tasks_url=job.get("tasks_url"),
         error=job.get("error"),
+        logs=job.get("logs", []),
     )
 
 
@@ -101,11 +103,13 @@ async def list_jobs():
             JobResult(
                 job_id=job_id,
                 status=job["status"],
+                message=job.get("message"),
                 transcript_url=job.get("transcript_url"),
                 summary_txt_url=job.get("summary_txt_url"),
                 summary_pdf_url=job.get("summary_pdf_url"),
                 tasks_url=job.get("tasks_url"),
                 error=job.get("error"),
+                logs=job.get("logs", []),
             )
         )
     return results

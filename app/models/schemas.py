@@ -21,11 +21,13 @@ class JobResponse(BaseModel):
 class JobResult(BaseModel):
     job_id: str
     status: JobStatus
+    message: str | None = None
     transcript_url: str | None = None
     summary_txt_url: str | None = None
     summary_pdf_url: str | None = None
     tasks_url: str | None = None
     error: str | None = None
+    logs: list[str] = []
 
 
 class HealthResponse(BaseModel):

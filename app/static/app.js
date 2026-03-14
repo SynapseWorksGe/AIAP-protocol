@@ -2,6 +2,7 @@
 const BASE = window.location.pathname.replace(/\/+$/, '');
 const API = `${BASE}/api/v1/meetings`;
 let pollingIntervals = {};
+let openLogs = {};
 
 // --- DOM refs ---
 const dropZone = document.getElementById('dropZone');
@@ -320,6 +321,28 @@ function buildJobHTML(job) {
         </div>`;
     }
 
+    // Log panel
+    if (job.logs && job.logs.length) {
+        const logId = `log-${job.job_id}`;
+        const isOpen = openLogs[job.job_id];
+        html += `
+            <div class="job-log">
+                <div class="job-log-header" onclick="toggleLog('${job.job_id}')">
+                    <span>Лог обработки (${job.logs.length})</span>
+                    <span class="job-log-toggle ${isOpen ? 'open' : ''}">&#9660;</span>
+                </div>
+                <div class="job-log-body ${isOpen ? 'open' : ''}" id="${logId}">
+                    <div class="job-log-entries">
+                        ${job.logs.map(l => {
+                            const cls = l.includes('ОШИБКА') ? 'error-entry' : '';
+                            return `<div class="job-log-entry ${cls}">${escapeHtml(l)}</div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     return html;
 }
 
@@ -403,6 +426,15 @@ function getStatusLabel(status) {
         failed: 'Ошибка',
     };
     return map[status] || status;
+}
+
+// --- Log toggle ---
+function toggleLog(jobId) {
+    openLogs[jobId] = !openLogs[jobId];
+    const el = document.getElementById(`log-${jobId}`);
+    const toggle = el?.previousElementSibling?.querySelector('.job-log-toggle');
+    if (el) el.classList.toggle('open');
+    if (toggle) toggle.classList.toggle('open');
 }
 
 // --- Text viewer modal ---
