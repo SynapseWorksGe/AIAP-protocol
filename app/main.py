@@ -98,15 +98,21 @@ def _check_yandex() -> ServiceStatus:
         import httpx
 
         t0 = time.monotonic()
-        # Lightweight check: call the operations endpoint (returns empty list, but validates auth)
+        # Send a minimal recognize request — valid auth returns 400 (bad audio), invalid returns 401/403
         with httpx.Client(timeout=5) as client:
-            resp = client.get(
-                "https://operation.api.cloud.yandex.net/operations",
-                headers={"Authorization": f"Api-Key {settings.yandex_api_key}"},
-                params={"pageSize": 1},
+            resp = client.post(
+                "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize",
+                params={"folderId": settings.yandex_folder_id},
+                headers={
+                    "Authorization": f"Api-Key {settings.yandex_api_key}",
+                    "Content-Type": "application/octet-stream",
+                },
+                content=b"",
             )
-            resp.raise_for_status()
         latency = round((time.monotonic() - t0) * 1000, 1)
+        # 401/403 = bad credentials, anything else = service reachable & auth ok
+        if resp.status_code in (401, 403):
+            return ServiceStatus(name="Yandex STT", status="error", message="Invalid API key or folder ID")
         return ServiceStatus(name="Yandex STT", status="ok", message="API key valid, service reachable", latency_ms=latency)
     except Exception as e:
         return ServiceStatus(name="Yandex STT", status="error", message=str(e))
