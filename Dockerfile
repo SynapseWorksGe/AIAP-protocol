@@ -16,7 +16,8 @@ RUN mkdir -p /app/fonts && \
     cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /app/fonts/ && \
     cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf /app/fonts/
 
-RUN useradd --system --no-create-home appuser
+RUN useradd --system --no-create-home appuser && \
+    mkdir -p /tmp/aiap-uploads && chown appuser /tmp/aiap-uploads
 USER appuser
 
 EXPOSE 8000
