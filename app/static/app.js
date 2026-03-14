@@ -14,6 +14,15 @@ const jobsList = document.getElementById('jobsList');
 const modal = document.getElementById('modal');
 const modalTitle = document.getElementById('modalTitle');
 const modalBody = document.getElementById('modalBody');
+const uploadProgress = document.getElementById('uploadProgress');
+const uploadFill = document.getElementById('uploadFill');
+const uploadPercent = document.getElementById('uploadPercent');
+const uploadLabel = document.getElementById('uploadLabel');
+const uploadSpeed = document.getElementById('uploadSpeed');
+const statusCard = document.getElementById('statusCard');
+const statusGrid = document.getElementById('statusGrid');
+const statusOverall = document.getElementById('statusOverall');
+const healthDot = document.getElementById('healthDot');
 
 let selectedFile = null;
 
@@ -43,7 +52,7 @@ function selectFile(file) {
     const allowed = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.opus', '.webm'];
     const ext = '.' + file.name.split('.').pop().toLowerCase();
     if (!allowed.includes(ext)) {
-        alert('Неподдерживаемый формат. Допустимые: ' + allowed.join(', '));
+        showNotification('Неподдерживаемый формат. Допустимые: ' + allowed.join(', '), 'error');
         return;
     }
     selectedFile = file;
@@ -63,41 +72,160 @@ function clearFile() {
 function formatSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / 1048576).toFixed(1) + ' MB';
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1073741824).toFixed(2) + ' GB';
 }
 
-// --- Upload ---
-uploadBtn.addEventListener('click', async () => {
+// --- Upload with XHR progress ---
+uploadBtn.addEventListener('click', () => {
     if (!selectedFile) return;
 
     uploadBtn.disabled = true;
     uploadBtn.textContent = 'Загрузка...';
+    uploadProgress.style.display = 'block';
+    uploadFill.style.width = '0%';
+    uploadPercent.textContent = '0%';
+    uploadLabel.textContent = 'Загрузка файла на сервер...';
+    uploadSpeed.textContent = '';
 
     const form = new FormData();
     form.append('file', selectedFile);
 
-    try {
-        const resp = await fetch(`${API}/transcribe?language=${langSelect.value}`, {
-            method: 'POST',
-            body: form,
-        });
+    const xhr = new XMLHttpRequest();
+    const startTime = Date.now();
 
-        if (!resp.ok) {
-            const err = await resp.json();
-            throw new Error(err.detail || 'Ошибка загрузки');
+    xhr.upload.addEventListener('progress', e => {
+        if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            uploadFill.style.width = pct + '%';
+            uploadPercent.textContent = pct + '%';
+            uploadLabel.textContent = `Загрузка файла... ${formatSize(e.loaded)} / ${formatSize(e.total)}`;
+
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (elapsed > 0.5) {
+                const speed = e.loaded / elapsed;
+                const remaining = (e.total - e.loaded) / speed;
+                uploadSpeed.textContent = `${formatSize(speed)}/s — осталось ~${Math.ceil(remaining)}с`;
+            }
         }
+    });
 
-        const data = await resp.json();
-        clearFile();
-        addJobToList(data);
-        startPolling(data.job_id);
-    } catch (e) {
-        alert('Ошибка: ' + e.message);
-    } finally {
+    xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+            const data = JSON.parse(xhr.responseText);
+            uploadLabel.textContent = 'Файл загружен, обработка начата';
+            uploadFill.style.width = '100%';
+            uploadPercent.textContent = '100%';
+            uploadSpeed.textContent = '';
+
+            setTimeout(() => {
+                uploadProgress.style.display = 'none';
+            }, 2000);
+
+            clearFile();
+            addJobToList(data);
+            startPolling(data.job_id);
+        } else {
+            let msg = 'Ошибка загрузки';
+            try {
+                const err = JSON.parse(xhr.responseText);
+                msg = err.detail || msg;
+            } catch (_) {}
+            showNotification(msg, 'error');
+            uploadProgress.style.display = 'none';
+        }
         uploadBtn.disabled = false;
         uploadBtn.textContent = 'Начать обработку';
-    }
+    });
+
+    xhr.addEventListener('error', () => {
+        showNotification('Сетевая ошибка при загрузке файла', 'error');
+        uploadProgress.style.display = 'none';
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Начать обработку';
+    });
+
+    xhr.open('POST', `${API}/transcribe?language=${langSelect.value}`);
+    xhr.send(form);
 });
+
+// --- Notification toast ---
+function showNotification(message, type = 'info') {
+    const existing = document.querySelector('.notification');
+    if (existing) existing.remove();
+
+    const el = document.createElement('div');
+    el.className = `notification notification-${type}`;
+    el.innerHTML = `
+        <span class="notification-text">${escapeHtml(message)}</span>
+        <button class="notification-close" onclick="this.parentElement.remove()">&times;</button>
+    `;
+    document.body.appendChild(el);
+
+    setTimeout(() => el.classList.add('visible'), 10);
+    setTimeout(() => {
+        el.classList.remove('visible');
+        setTimeout(() => el.remove(), 300);
+    }, 6000);
+}
+
+// --- Health check ---
+function toggleStatus() {
+    statusCard.style.display = statusCard.style.display === 'none' ? 'block' : 'none';
+}
+
+async function checkHealth() {
+    statusCard.style.display = 'block';
+    healthDot.className = 'health-dot checking';
+
+    statusGrid.innerHTML = `
+        <div class="status-item checking"><div class="status-item-header"><span class="status-icon">&#9679;</span> S3 Storage<span class="status-checking">проверка...</span></div></div>
+        <div class="status-item checking"><div class="status-item-header"><span class="status-icon">&#9679;</span> Yandex STT<span class="status-checking">проверка...</span></div></div>
+        <div class="status-item checking"><div class="status-item-header"><span class="status-icon">&#9679;</span> Claude AI<span class="status-checking">проверка...</span></div></div>
+    `;
+    statusOverall.textContent = 'Проверка...';
+    statusOverall.className = 'status-overall checking';
+
+    try {
+        const resp = await fetch('/health/details');
+        const data = await resp.json();
+
+        statusGrid.innerHTML = '';
+        data.services.forEach(svc => {
+            statusGrid.innerHTML += buildServiceCard(svc);
+        });
+
+        statusOverall.textContent = data.status === 'ok' ? 'Все службы работают' : 'Есть проблемы';
+        statusOverall.className = `status-overall ${data.status === 'ok' ? 'ok' : 'error'}`;
+        healthDot.className = `health-dot ${data.status === 'ok' ? 'ok' : 'error'}`;
+    } catch (e) {
+        statusGrid.innerHTML = '<div class="status-item error"><div class="status-item-header"><span class="status-icon">&#9679;</span> Не удалось проверить статус</div><div class="status-message">' + escapeHtml(e.message) + '</div></div>';
+        statusOverall.textContent = 'Ошибка';
+        statusOverall.className = 'status-overall error';
+        healthDot.className = 'health-dot error';
+    }
+}
+
+function buildServiceCard(svc) {
+    const icons = {
+        'S3 Storage': '&#128451;',
+        'Yandex STT': '&#127908;',
+        'Claude AI': '&#129302;',
+    };
+    const icon = icons[svc.name] || '&#9881;';
+    const latency = svc.latency_ms != null ? `<span class="status-latency">${svc.latency_ms}ms</span>` : '';
+
+    return `
+        <div class="status-item ${svc.status}">
+            <div class="status-item-header">
+                <span class="status-icon status-icon-${svc.status}">&#9679;</span>
+                <span class="status-name">${icon} ${escapeHtml(svc.name)}</span>
+                ${latency}
+            </div>
+            <div class="status-message">${escapeHtml(svc.message)}</div>
+        </div>
+    `;
+}
 
 // --- Jobs ---
 async function loadJobs() {
@@ -121,10 +249,8 @@ async function loadJobs() {
 }
 
 function addJobToList(job) {
-    // Remove empty state
     const empty = jobsList.querySelector('.jobs-empty');
     if (empty) empty.remove();
-
     renderJob(job, true);
 }
 
@@ -154,16 +280,28 @@ function buildJobHTML(job) {
     const progress = getProgress(job.status);
     const statusLabel = getStatusLabel(job.status);
     const shortId = job.job_id.substring(0, 8);
+    const isActive = !isTerminal(job.status);
 
     let html = `
         <div class="job-header">
             <span class="job-id">${shortId}...</span>
             <span class="status-badge status-${job.status}">${statusLabel}</span>
         </div>
-        <div class="progress-bar ${isTerminal(job.status) ? '' : 'active'}">
-            <div class="progress-fill" style="width: ${progress}%"></div>
-        </div>
     `;
+
+    // Progress bar with step indicator
+    if (isActive) {
+        html += `
+            <div class="job-progress-section">
+                <div class="progress-bar active">
+                    <div class="progress-fill" style="width: ${progress}%"></div>
+                </div>
+                <div class="job-steps">
+                    ${buildStepIndicators(job.status)}
+                </div>
+            </div>
+        `;
+    }
 
     if (job.status === 'completed') {
         html += '<div class="job-results">';
@@ -175,10 +313,31 @@ function buildJobHTML(job) {
     }
 
     if (job.status === 'failed' && job.error) {
-        html += `<div class="job-error">${escapeHtml(job.error)}</div>`;
+        html += `<div class="job-error">
+            <strong>Ошибка:</strong> ${escapeHtml(job.error)}
+        </div>`;
     }
 
     return html;
+}
+
+function buildStepIndicators(currentStatus) {
+    const steps = [
+        { key: 'pending', label: 'Очередь' },
+        { key: 'transcribing', label: 'Распознавание' },
+        { key: 'analyzing', label: 'Анализ' },
+        { key: 'generating_files', label: 'Генерация' },
+        { key: 'uploading', label: 'Загрузка' },
+    ];
+    const order = ['pending', 'transcribing', 'analyzing', 'generating_files', 'uploading', 'completed'];
+    const currentIdx = order.indexOf(currentStatus);
+
+    return steps.map((step, i) => {
+        let cls = 'step-pending';
+        if (i < currentIdx) cls = 'step-done';
+        else if (i === currentIdx) cls = 'step-active';
+        return `<span class="job-step ${cls}">${step.label}</span>`;
+    }).join('');
 }
 
 function buildResultLink(url, label, type) {
@@ -209,6 +368,12 @@ function startPolling(jobId) {
             if (isTerminal(job.status)) {
                 clearInterval(pollingIntervals[jobId]);
                 delete pollingIntervals[jobId];
+
+                if (job.status === 'completed') {
+                    showNotification('Обработка завершена!', 'success');
+                } else if (job.status === 'failed') {
+                    showNotification('Обработка завершилась с ошибкой', 'error');
+                }
             }
         } catch (e) {
             // silently retry
@@ -228,8 +393,8 @@ function getProgress(status) {
 function getStatusLabel(status) {
     const map = {
         pending: 'Ожидание',
-        transcribing: 'Распознавание',
-        analyzing: 'Анализ',
+        transcribing: 'Распознавание речи',
+        analyzing: 'Анализ (Claude AI)',
         generating_files: 'Генерация файлов',
         uploading: 'Загрузка в S3',
         completed: 'Готово',
@@ -273,3 +438,5 @@ function escapeHtml(text) {
 
 // --- Init ---
 loadJobs();
+// Auto-check health on load
+checkHealth();

@@ -13,10 +13,31 @@
 <header class="header">
     <div class="header-inner">
         <div class="logo">AIAP <span>Meeting Protocol</span></div>
+        <button class="btn btn-outline btn-sm" id="healthBtn" onclick="checkHealth()">
+            <span class="health-dot" id="healthDot"></span>
+            Статус служб
+        </button>
     </div>
 </header>
 
 <main class="container">
+    <!-- Service status dashboard -->
+    <section class="status-card" id="statusCard" style="display: none;">
+        <div class="status-header">
+            <h2>Статус служб</h2>
+            <div class="status-actions">
+                <span class="status-overall" id="statusOverall"></span>
+                <button class="btn btn-outline btn-sm" onclick="checkHealth()">Обновить</button>
+                <button class="status-close" onclick="toggleStatus()">&times;</button>
+            </div>
+        </div>
+        <div class="status-grid" id="statusGrid">
+            <div class="status-item checking">
+                <div class="status-item-header"><span class="status-icon">&#9679;</span> Загрузка...</div>
+            </div>
+        </div>
+    </section>
+
     <!-- Upload -->
     <section class="upload-card">
         <h2>Загрузить аудиозапись</h2>
@@ -34,6 +55,18 @@
             <span class="name" id="fileName"></span>
             <span class="size" id="fileSize"></span>
             <button class="remove" id="removeFile">&times;</button>
+        </div>
+
+        <!-- Upload progress -->
+        <div class="upload-progress" id="uploadProgress" style="display: none;">
+            <div class="upload-progress-header">
+                <span id="uploadLabel">Загрузка файла...</span>
+                <span id="uploadPercent">0%</span>
+            </div>
+            <div class="progress-bar active">
+                <div class="progress-fill upload-fill" id="uploadFill" style="width: 0%"></div>
+            </div>
+            <div class="upload-speed" id="uploadSpeed"></div>
         </div>
 
         <div class="controls">

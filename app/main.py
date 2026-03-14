@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.models.schemas import HealthResponse
+from app.models.schemas import HealthDetailResponse, HealthResponse, ServiceStatus
 from app.routers import meetings
 
 logging.basicConfig(
@@ -48,6 +49,89 @@ async def index():
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(status="ok", version="1.0.0")
+
+
+@app.get("/health/details", response_model=HealthDetailResponse)
+async def health_details():
+    """Check connectivity to all external services."""
+    services = []
+
+    # S3
+    services.append(_check_s3())
+
+    # Yandex STT
+    services.append(_check_yandex())
+
+    # Claude / Anthropic
+    services.append(_check_anthropic())
+
+    overall = "ok" if all(s.status == "ok" for s in services) else "degraded"
+    return HealthDetailResponse(status=overall, version="1.0.0", services=services)
+
+
+def _check_s3() -> ServiceStatus:
+    if not settings.s3_access_key or not settings.s3_bucket_name:
+        return ServiceStatus(name="S3 Storage", status="unconfigured", message="S3 credentials not set")
+    try:
+        import boto3
+        from botocore.config import Config
+
+        t0 = time.monotonic()
+        client = boto3.client(
+            "s3",
+            endpoint_url=settings.s3_endpoint_url,
+            aws_access_key_id=settings.s3_access_key,
+            aws_secret_access_key=settings.s3_secret_key,
+            config=Config(signature_version="s3v4", connect_timeout=5, read_timeout=5),
+        )
+        client.head_bucket(Bucket=settings.s3_bucket_name)
+        latency = round((time.monotonic() - t0) * 1000, 1)
+        return ServiceStatus(name="S3 Storage", status="ok", message=f"Bucket '{settings.s3_bucket_name}' accessible", latency_ms=latency)
+    except Exception as e:
+        return ServiceStatus(name="S3 Storage", status="error", message=str(e))
+
+
+def _check_yandex() -> ServiceStatus:
+    if not settings.yandex_api_key or not settings.yandex_folder_id:
+        return ServiceStatus(name="Yandex STT", status="unconfigured", message="Yandex API key or folder ID not set")
+    try:
+        import httpx
+
+        t0 = time.monotonic()
+        # Lightweight check: call the operations endpoint (returns empty list, but validates auth)
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(
+                "https://operation.api.cloud.yandex.net/operations",
+                headers={"Authorization": f"Api-Key {settings.yandex_api_key}"},
+                params={"pageSize": 1},
+            )
+            resp.raise_for_status()
+        latency = round((time.monotonic() - t0) * 1000, 1)
+        return ServiceStatus(name="Yandex STT", status="ok", message="API key valid, service reachable", latency_ms=latency)
+    except Exception as e:
+        return ServiceStatus(name="Yandex STT", status="error", message=str(e))
+
+
+def _check_anthropic() -> ServiceStatus:
+    if not settings.anthropic_api_key:
+        return ServiceStatus(name="Claude AI", status="unconfigured", message="Anthropic API key not set")
+    try:
+        import anthropic
+
+        t0 = time.monotonic()
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        # Minimal API call to validate the key
+        client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        latency = round((time.monotonic() - t0) * 1000, 1)
+        return ServiceStatus(name="Claude AI", status="ok", message="API key valid, model accessible", latency_ms=latency)
+    except anthropic.AuthenticationError:
+        return ServiceStatus(name="Claude AI", status="error", message="Invalid API key")
+    except Exception as e:
+        return ServiceStatus(name="Claude AI", status="error", message=str(e))
 
 
 if __name__ == "__main__":

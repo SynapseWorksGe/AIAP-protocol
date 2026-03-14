@@ -31,3 +31,16 @@ class JobResult(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
+
+class ServiceStatus(BaseModel):
+    name: str
+    status: str  # "ok", "error", "unconfigured"
+    message: str
+    latency_ms: float | None = None
+
+
+class HealthDetailResponse(BaseModel):
+    status: str
+    version: str
+    services: list[ServiceStatus]
