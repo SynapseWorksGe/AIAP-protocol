@@ -32,11 +32,18 @@ class YandexSTTService:
     # Public API
     # ------------------------------------------------------------------
 
-    def transcribe_long_audio(self, audio_path: str, language_code: str = "ru-RU", on_log=None) -> str:
+    def transcribe_long_audio(
+        self,
+        audio_path: str,
+        language_code: str = "ru-RU",
+        on_log=None,
+        sample_rate: int = 48000,
+    ) -> str:
         """Transcribe an audio file via longRunningRecognize (single request, no chunking).
 
         Args:
             on_log: Optional callback ``fn(message: str)`` for progress updates.
+            sample_rate: Audio sample rate in Hz (default 48000, use 16000 for compressed audio).
         """
         def _log(msg):
             logger.info(msg)
@@ -58,7 +65,7 @@ class YandexSTTService:
                     "model": "general",
                     "profanityFilter": False,
                     "audioEncoding": "OGG_OPUS",
-                    "sampleRateHertz": 48000,
+                    "sampleRateHertz": sample_rate,
                     "audioChannelCount": 1,
                 },
                 "folderId": self._folder_id,

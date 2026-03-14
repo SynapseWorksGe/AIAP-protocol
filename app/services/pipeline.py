@@ -2,6 +2,7 @@
 
 import logging
 import os
+import subprocess
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -40,8 +41,38 @@ def _log(job_id: str, message: str):
     logger.info("Job %s: %s", job_id, message)
 
 
+COMPRESS_THRESHOLD_MB = 10  # Compress audio files larger than this (MB)
+
+
+def _compress_audio(audio_path: str, job_id: str) -> str | None:
+    """Compress audio to low-bitrate OGG/Opus for STT (24 kbps, 16 kHz, mono).
+
+    Returns path to compressed file, or None if compression failed/not needed.
+    """
+    out_path = audio_path + ".compressed.ogg"
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", audio_path,
+                "-c:a", "libopus", "-b:a", "24k",
+                "-ac", "1", "-ar", "16000",
+                "-application", "voip",
+                out_path,
+            ],
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode != 0:
+            logger.warning("ffmpeg compression failed: %s", result.stderr[:500])
+            return None
+        return out_path
+    except Exception as e:
+        logger.warning("Audio compression error: %s", e)
+        return None
+
+
 def process_audio(job_id: str, audio_path: str, original_filename: str, language: str = "ru-RU"):
     """Full pipeline executed in a background thread."""
+    compressed_path = None
     try:
         jobs[job_id].setdefault("logs", [])
         file_size = os.path.getsize(audio_path)
@@ -65,8 +96,25 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
         else:
             _log(job_id, f"Файл >= 1 MB — используется longRunningRecognize (Yandex STT)")
             _update_status(job_id, JobStatus.TRANSCRIBING, "Распознавание речи (Yandex STT)...")
+
+            # Compress large audio to reduce payload size (39 MB → ~3-4 MB)
+            stt_path = audio_path
+            size_mb = file_size / 1_048_576
+            if size_mb >= COMPRESS_THRESHOLD_MB:
+                _log(job_id, f"Сжатие аудио ({size_mb:.1f} MB) для Yandex STT (24kbps OGG/Opus)...")
+                compressed_path = _compress_audio(audio_path, job_id)
+                if compressed_path:
+                    comp_size = os.path.getsize(compressed_path) / 1_048_576
+                    _log(job_id, f"Аудио сжато: {size_mb:.1f} MB → {comp_size:.1f} MB")
+                    stt_path = compressed_path
+                else:
+                    _log(job_id, "Сжатие не удалось, отправка оригинального файла")
+
+            stt_sample_rate = 16000 if compressed_path else 48000
             raw_transcript = yandex_stt_service.transcribe_long_audio(
-                audio_path, language, on_log=lambda msg: _log(job_id, msg)
+                stt_path, language,
+                on_log=lambda msg: _log(job_id, msg),
+                sample_rate=stt_sample_rate,
             )
             _log(job_id, f"Распознавание завершено, получено {len(raw_transcript)} символов")
 
@@ -160,6 +208,8 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
             shutil.rmtree(tmp_dir, ignore_errors=True)
         if os.path.exists(audio_path):
             os.remove(audio_path)
+        if compressed_path and os.path.exists(compressed_path):
+            os.remove(compressed_path)
         _log(job_id, "Временные файлы удалены")
 
 
