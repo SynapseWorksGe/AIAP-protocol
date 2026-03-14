@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIAP — Протокол встречи</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="header">
+    <div class="header-inner">
+        <div class="logo">AIAP <span>Meeting Protocol</span></div>
+    </div>
+</header>
+
+<main class="container">
+    <!-- Upload -->
+    <section class="upload-card">
+        <h2>Загрузить аудиозапись</h2>
+
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-zone-icon">&#127908;</div>
+            <p>Перетащите файл сюда или нажмите для выбора</p>
+            <span class="formats">WAV, MP3, OGG, FLAC, M4A, OPUS, WEBM</span>
+        </div>
+
+        <input type="file" class="file-input" id="fileInput"
+               accept=".wav,.mp3,.ogg,.flac,.m4a,.opus,.webm">
+
+        <div class="file-info" id="fileInfo">
+            <span class="name" id="fileName"></span>
+            <span class="size" id="fileSize"></span>
+            <button class="remove" id="removeFile">&times;</button>
+        </div>
+
+        <div class="controls">
+            <select class="lang-select" id="langSelect">
+                <option value="ru-RU">Русский</option>
+                <option value="en-US">English</option>
+                <option value="kk-KK">Қазақша</option>
+                <option value="tr-TR">Türkçe</option>
+                <option value="de-DE">Deutsch</option>
+            </select>
+            <button class="btn btn-primary" id="uploadBtn" disabled>Начать обработку</button>
+        </div>
+    </section>
+
+    <!-- Jobs -->
+    <section class="jobs-card">
+        <h2>
+            Задачи
+            <button class="refresh-btn" onclick="loadJobs()">Обновить</button>
+        </h2>
+        <div id="jobsList">
+            <div class="jobs-empty">Нет задач. Загрузите аудиофайл для начала.</div>
+        </div>
+    </section>
+</main>
+
+<!-- Text viewer modal -->
+<div class="modal-overlay" id="modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modalTitle">Просмотр</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

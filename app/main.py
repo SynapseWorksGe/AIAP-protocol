@@ -2,8 +2,11 @@
 
 import logging
 import os
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.models.schemas import HealthResponse
@@ -15,6 +18,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+BASE_DIR = Path(__file__).resolve().parent
+
 app = FastAPI(
     title="AIAP Meeting Protocol Service",
     description=(
@@ -24,6 +29,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 app.include_router(meetings.router)
 
 
@@ -31,6 +37,12 @@ app.include_router(meetings.router)
 async def startup():
     os.makedirs(settings.upload_dir, exist_ok=True)
     logger.info("AIAP Meeting Protocol Service started on %s:%s", settings.app_host, settings.app_port)
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    html_path = BASE_DIR / "templates" / "index.html"
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
 @app.get("/health", response_model=HealthResponse)
