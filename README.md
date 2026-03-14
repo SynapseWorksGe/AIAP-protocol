@@ -25,20 +25,55 @@ Audio File → API → S3 → Yandex STT → Claude Sonnet → TXT + PDF → S3
 | `GET` | `/health` | Health check |
 | `GET` | `/docs` | Swagger UI |
 
-## Установка на Ubuntu
+## Установка (Docker Compose — рекомендуется)
+
+Подходит для VPS с несколькими микросервисами. Nginx работает как reverse proxy.
 
 ```bash
-# 1. Клонировать репозиторий
-git clone <repo-url> /tmp/aiap-protocol
-cd /tmp/aiap-protocol
+# 1. Подготовить VPS (Docker, UFW, swap) — один раз
+sudo bash deploy/bootstrap-vps.sh
 
-# 2. Запустить установку (от root)
-sudo bash scripts/install.sh
+# 2. Склонировать проект
+cd /opt/services
+git clone <repo-url> aiap-protocol
+cd aiap-protocol/deploy
 
 # 3. Настроить credentials
-sudo nano /opt/aiap-protocol/.env
+cp envs/aiap-protocol.env.example envs/aiap-protocol.env
+nano envs/aiap-protocol.env
 
-# 4. Запустить сервис
+# 4. Запустить всё
+docker compose up -d --build
+```
+
+Сервис будет доступен по `http://<IP>/aiap/`
+
+### Добавить новый микросервис
+
+1. Добавить секцию в `deploy/docker-compose.yml`
+2. Добавить `location` в `deploy/nginx/default.conf`
+3. Создать `.env` файл в `deploy/envs/`
+4. `docker compose up -d --build`
+
+### Управление (Docker)
+
+```bash
+cd /opt/services/aiap-protocol/deploy
+
+docker compose up -d --build   # Собрать и запустить
+docker compose ps              # Статус контейнеров
+docker compose logs -f aiap    # Логи сервиса
+docker compose restart nginx   # Перезапустить nginx
+docker compose down            # Остановить всё
+```
+
+## Установка (systemd — альтернатива)
+
+```bash
+git clone <repo-url> /tmp/aiap-protocol
+cd /tmp/aiap-protocol
+sudo bash scripts/install.sh
+sudo nano /opt/aiap-protocol/.env
 sudo systemctl start aiap-protocol
 ```
 
@@ -94,14 +129,17 @@ curl http://localhost:8000/api/v1/meetings/status/550e8400-e29b-41d4-a716-446655
 }
 ```
 
-## Управление сервисом
+## Структура деплоя
 
-```bash
-sudo systemctl start aiap-protocol    # Запустить
-sudo systemctl stop aiap-protocol     # Остановить
-sudo systemctl restart aiap-protocol  # Перезапустить
-sudo systemctl status aiap-protocol   # Статус
-sudo journalctl -u aiap-protocol -f   # Логи в реальном времени
+```
+deploy/
+├── docker-compose.yml              # Все сервисы + Nginx
+├── bootstrap-vps.sh                # Подготовка VPS (Docker, UFW, swap)
+├── nginx/
+│   └── default.conf                # Маршрутизация по путям (/aiap/, /service2/, ...)
+└── envs/
+    ├── aiap-protocol.env.example   # Шаблон
+    └── aiap-protocol.env           # Реальные credentials (в .gitignore)
 ```
 
 ## Поддерживаемые форматы аудио

@@ -1,0 +1,62 @@
+##############################################################################
+# Docker Compose для мультисервисной VPS
+#
+# Структура:
+#   Nginx (порт 80) ─┬─ /aiap/       → aiap-protocol:8000
+#                     ├─ /service2/   → service2:8001   (пример)
+#                     └─ /service3/   → service3:8002   (пример)
+#
+# Как добавить новый сервис:
+#   1. Добавить секцию в services ниже
+#   2. Добавить location в nginx/default.conf
+#   3. docker compose up -d
+##############################################################################
+
+services:
+
+  # ── Reverse proxy ─────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - aiap-protocol
+    restart: unless-stopped
+    networks:
+      - services
+
+  # ── AIAP Meeting Protocol ────────────────────────────────────────────────
+  aiap-protocol:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: aiap-protocol
+    env_file:
+      - ./envs/aiap-protocol.env
+    volumes:
+      - aiap-uploads:/tmp/aiap-uploads
+    restart: unless-stopped
+    networks:
+      - services
+
+  # ── Пример: Следующий сервис ─────────────────────────────────────────────
+  # service2:
+  #   build:
+  #     context: /path/to/service2
+  #     dockerfile: Dockerfile
+  #   container_name: service2
+  #   env_file:
+  #     - ./envs/service2.env
+  #   restart: unless-stopped
+  #   networks:
+  #     - services
+
+volumes:
+  aiap-uploads:
+
+networks:
+  services:
+    driver: bridge
