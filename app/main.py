@@ -62,6 +62,9 @@ async def health_details():
     # Yandex STT
     services.append(_check_yandex())
 
+    # Yandex Object Storage (для больших аудио)
+    services.append(_check_yc_s3())
+
     # Claude / Anthropic
     services.append(_check_anthropic())
 
@@ -117,6 +120,29 @@ def _check_yandex() -> ServiceStatus:
         return ServiceStatus(name="Yandex STT", status="ok", message="API key valid, service reachable", latency_ms=latency)
     except Exception as e:
         return ServiceStatus(name="Yandex STT", status="error", message=str(e))
+
+
+def _check_yc_s3() -> ServiceStatus:
+    if not settings.yc_s3_access_key or not settings.yc_s3_secret_key or not settings.yc_s3_bucket:
+        return ServiceStatus(name="Yandex Object Storage", status="unconfigured", message="YC S3 credentials not set (optional, needed for audio > 15 MB)")
+    try:
+        import boto3
+        from botocore.config import Config
+
+        t0 = time.monotonic()
+        client = boto3.client(
+            "s3",
+            endpoint_url="https://storage.yandexcloud.net",
+            region_name="ru-central1",
+            aws_access_key_id=settings.yc_s3_access_key,
+            aws_secret_access_key=settings.yc_s3_secret_key,
+            config=Config(signature_version="s3v4", connect_timeout=5, read_timeout=5),
+        )
+        client.head_bucket(Bucket=settings.yc_s3_bucket)
+        latency = round((time.monotonic() - t0) * 1000, 1)
+        return ServiceStatus(name="Yandex Object Storage", status="ok", message=f"Bucket '{settings.yc_s3_bucket}' accessible", latency_ms=latency)
+    except Exception as e:
+        return ServiceStatus(name="Yandex Object Storage", status="error", message=str(e))
 
 
 def _check_anthropic() -> ServiceStatus:
