@@ -1,0 +1,14 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+python-dotenv==1.0.1
+boto3==1.35.86
+anthropic==0.43.0
+grpcio==1.68.1
+protobuf==5.29.2
+pydub==0.25.1
+fpdf2==2.8.2
+aiofiles==24.1.0
+httpx==0.28.1
+pydantic==2.10.4
+pydantic-settings==2.7.1
