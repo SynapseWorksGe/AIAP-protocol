@@ -3,6 +3,7 @@
 import logging
 import os
 import subprocess
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -39,6 +40,11 @@ def _log(job_id: str, message: str):
     entry = f"[{ts}] {message}"
     jobs[job_id].setdefault("logs", []).append(entry)
     logger.info("Job %s: %s", job_id, message)
+
+
+def _start_stage_timer(job_id: str):
+    """Record when the current stage started."""
+    jobs[job_id]["stage_started_at"] = time.time()
 
 
 COMPRESS_THRESHOLD_MB = 10  # Compress audio files larger than this (MB)
@@ -79,7 +85,7 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
         _log(job_id, f"Получен файл: {original_filename} ({_fmt_size(file_size)})")
 
         # 1. Upload original audio to S3
-        _update_status(job_id, JobStatus.TRANSCRIBING, "Загрузка аудио в S3...")
+        _update_status(job_id, JobStatus.PENDING, "Загрузка аудио в S3...")
         audio_s3_key = _s3_key(job_id, original_filename)
         _log(job_id, f"Загрузка аудио в S3: {audio_s3_key}")
         audio_url = s3_service.upload_file(audio_path, audio_s3_key)
@@ -95,12 +101,12 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
             _log(job_id, f"Распознавание завершено, получено {len(raw_transcript)} символов")
         else:
             _log(job_id, f"Файл >= 1 MB — используется longRunningRecognize (Yandex STT)")
-            _update_status(job_id, JobStatus.TRANSCRIBING, "Распознавание речи (Yandex STT)...")
 
             # Compress large audio to reduce payload size (39 MB → ~3-4 MB)
             stt_path = audio_path
             size_mb = file_size / 1_048_576
             if size_mb >= COMPRESS_THRESHOLD_MB:
+                _update_status(job_id, JobStatus.COMPRESSING, "Сжатие аудио...")
                 _log(job_id, f"Сжатие аудио ({size_mb:.1f} MB) для Yandex STT (24kbps OGG/Opus)...")
                 compressed_path = _compress_audio(audio_path, job_id)
                 if compressed_path:
@@ -110,6 +116,7 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
                 else:
                     _log(job_id, "Сжатие не удалось, отправка оригинального файла")
 
+            _update_status(job_id, JobStatus.TRANSCRIBING, "Распознавание речи (Yandex STT)...")
             stt_sample_rate = 16000 if compressed_path else 48000
             raw_transcript = yandex_stt_service.transcribe_long_audio(
                 stt_path, language,
@@ -216,4 +223,5 @@ def process_audio(job_id: str, audio_path: str, original_filename: str, language
 def _update_status(job_id: str, status: JobStatus, message: str):
     jobs[job_id]["status"] = status
     jobs[job_id]["message"] = message
+    _start_stage_timer(job_id)
     logger.info("Job %s: %s - %s", job_id, status.value, message)

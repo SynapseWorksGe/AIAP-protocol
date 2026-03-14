@@ -22,7 +22,7 @@ MAX_RETRIES = 5
 RETRY_BACKOFF_BASE = 5  # seconds
 
 # Files larger than this (in MB, after compression) use Object Storage URI
-URI_THRESHOLD_MB = 15
+URI_THRESHOLD_MB = 10
 
 
 class YandexSTTService:
@@ -128,7 +128,7 @@ class YandexSTTService:
                 # Inline base64 content
                 with open(audio_path, "rb") as f:
                     raw = f.read()
-                _log(f"Отправка файла в Yandex STT ({file_size_mb:.1f} MB)...")
+                _log(f"Отправка файла в Yandex STT inline ({file_size_mb:.1f} MB)...")
                 audio_content = base64.b64encode(raw).decode("utf-8")
                 body = {
                     "config": {"specification": spec, "folderId": self._folder_id},

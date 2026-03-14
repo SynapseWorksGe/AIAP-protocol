@@ -398,11 +398,19 @@ body {
 }
 
 .status-pending { background: #fef3c7; color: #92400e; }
+.status-compressing { background: #fef9c3; color: #854d0e; }
 .status-transcribing, .status-analyzing, .status-generating_files, .status-uploading {
     background: #dbeafe; color: #1e40af;
 }
 .status-completed { background: #d1fae5; color: #065f46; }
 .status-failed { background: #fee2e2; color: #991b1b; }
+
+.elapsed-timer {
+    margin-left: 6px;
+    font-weight: 400;
+    opacity: 0.8;
+    font-variant-numeric: tabular-nums;
+}
 
 /* Progress bar */
 .progress-bar {

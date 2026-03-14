@@ -81,6 +81,16 @@ async def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     job = jobs[job_id]
+    return _job_to_result(job_id, job)
+
+
+@router.get("/jobs", response_model=list[JobResult])
+async def list_jobs():
+    """Получить список всех задач."""
+    return [_job_to_result(job_id, job) for job_id, job in jobs.items()]
+
+
+def _job_to_result(job_id: str, job: dict) -> JobResult:
     return JobResult(
         job_id=job_id,
         status=job["status"],
@@ -91,25 +101,5 @@ async def get_job_status(job_id: str):
         tasks_url=job.get("tasks_url"),
         error=job.get("error"),
         logs=job.get("logs", []),
+        stage_started_at=job.get("stage_started_at"),
     )
-
-
-@router.get("/jobs", response_model=list[JobResult])
-async def list_jobs():
-    """Получить список всех задач."""
-    results = []
-    for job_id, job in jobs.items():
-        results.append(
-            JobResult(
-                job_id=job_id,
-                status=job["status"],
-                message=job.get("message"),
-                transcript_url=job.get("transcript_url"),
-                summary_txt_url=job.get("summary_txt_url"),
-                summary_pdf_url=job.get("summary_pdf_url"),
-                tasks_url=job.get("tasks_url"),
-                error=job.get("error"),
-                logs=job.get("logs", []),
-            )
-        )
-    return results

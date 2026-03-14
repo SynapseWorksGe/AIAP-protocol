@@ -3,6 +3,7 @@ const BASE = window.location.pathname.replace(/\/+$/, '');
 const API = `${BASE}/api/v1/meetings`;
 let pollingIntervals = {};
 let openLogs = {};
+let elapsedTimers = {};
 
 // --- DOM refs ---
 const dropZone = document.getElementById('dropZone');
@@ -277,6 +278,38 @@ function updateJob(job) {
     } else {
         addJobToList(job);
     }
+    if (isTerminal(job.status)) {
+        stopElapsedTimer(job.job_id);
+    } else if (job.stage_started_at) {
+        startElapsedTimer(job.job_id, job.stage_started_at);
+    }
+}
+
+function formatElapsed(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return m > 0 ? `${m}м ${s}с` : `${s}с`;
+}
+
+function startElapsedTimer(jobId, stageStartedAt) {
+    stopElapsedTimer(jobId);
+    if (!stageStartedAt) return;
+
+    function update() {
+        const el = document.getElementById(`elapsed-${jobId}`);
+        if (!el) return;
+        const elapsed = (Date.now() / 1000) - stageStartedAt;
+        el.textContent = formatElapsed(Math.max(0, elapsed));
+    }
+    update();
+    elapsedTimers[jobId] = setInterval(update, 1000);
+}
+
+function stopElapsedTimer(jobId) {
+    if (elapsedTimers[jobId]) {
+        clearInterval(elapsedTimers[jobId]);
+        delete elapsedTimers[jobId];
+    }
 }
 
 function buildJobHTML(job) {
@@ -288,7 +321,10 @@ function buildJobHTML(job) {
     let html = `
         <div class="job-header">
             <span class="job-id">${shortId}...</span>
-            <span class="status-badge status-${job.status}">${statusLabel}</span>
+            <span class="status-badge status-${job.status}">
+                ${statusLabel}
+                ${isActive ? `<span class="elapsed-timer" id="elapsed-${job.job_id}"></span>` : ''}
+            </span>
         </div>
     `;
 
@@ -349,12 +385,13 @@ function buildJobHTML(job) {
 function buildStepIndicators(currentStatus) {
     const steps = [
         { key: 'pending', label: 'Очередь' },
+        { key: 'compressing', label: 'Сжатие' },
         { key: 'transcribing', label: 'Распознавание' },
         { key: 'analyzing', label: 'Анализ' },
         { key: 'generating_files', label: 'Генерация' },
         { key: 'uploading', label: 'Загрузка' },
     ];
-    const order = ['pending', 'transcribing', 'analyzing', 'generating_files', 'uploading', 'completed'];
+    const order = ['pending', 'compressing', 'transcribing', 'analyzing', 'generating_files', 'uploading', 'completed'];
     const currentIdx = order.indexOf(currentStatus);
 
     return steps.map((step, i) => {
@@ -411,13 +448,14 @@ function isTerminal(status) {
 }
 
 function getProgress(status) {
-    const map = { pending: 10, transcribing: 30, analyzing: 55, generating_files: 75, uploading: 90, completed: 100, failed: 100 };
+    const map = { pending: 5, compressing: 15, transcribing: 30, analyzing: 55, generating_files: 75, uploading: 90, completed: 100, failed: 100 };
     return map[status] || 0;
 }
 
 function getStatusLabel(status) {
     const map = {
         pending: 'Ожидание',
+        compressing: 'Сжатие аудио',
         transcribing: 'Распознавание речи',
         analyzing: 'Анализ (Claude AI)',
         generating_files: 'Генерация файлов',

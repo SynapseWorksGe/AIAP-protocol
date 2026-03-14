@@ -4,6 +4,7 @@ from enum import Enum
 
 class JobStatus(str, Enum):
     PENDING = "pending"
+    COMPRESSING = "compressing"
     TRANSCRIBING = "transcribing"
     ANALYZING = "analyzing"
     GENERATING_FILES = "generating_files"
@@ -28,6 +29,7 @@ class JobResult(BaseModel):
     tasks_url: str | None = None
     error: str | None = None
     logs: list[str] = []
+    stage_started_at: float | None = None
 
 
 class HealthResponse(BaseModel):
